@@ -1,0 +1,107 @@
+# R2 object storage layout — the declared state of the bucket.
+#
+# This file is the source of truth, not a description of what happens to be
+# there. `python -m vide.storage reconcile` compares it against the live bucket
+# and reports drift; `--apply` creates anything missing. Nothing is ever deleted
+# without --allow-delete, which must be passed explicitly.
+#
+# Why declared-not-observed: a hand-maintained inventory goes stale the first
+# time anyone uploads through the console. A manifest plus a reconcile command
+# stays honest because drift is a command away from being visible.
+
+bucket: vid
+endpoint_env: STORAGE_ENDPOINT
+region: auto  # R2 ignores region but SigV4 requires one
+
+# Everything the platform writes lives under one of these prefixes. Keys are
+# built from the templates below — never hand-assembled at call sites, so a
+# layout change is an edit here rather than a grep across the codebase.
+prefixes:
+
+  sources:
+    template: "projects/{project_id}/sources/{document_id}/{filename}"
+    purpose: >
+      Client-supplied input exactly as uploaded — scripts, bibles, breakdowns,
+      reference images. Immutable; a re-upload is a new document_id.
+    retention: keep
+    public: false
+
+  character_assets:
+    template: "projects/{project_id}/assets/characters/{entity_id}/{asset_id}/v{version}/{filename}"
+    purpose: >
+      Character sheets and state variants. One directory per asset
+      version because versions are immutable (principle 10) — a new variant
+      never overwrites the old one.
+    retention: keep
+    public: false
+
+  location_assets:
+    template: "projects/{project_id}/assets/locations/{entity_id}/{asset_id}/v{version}/{filename}"
+    purpose: >
+      Geography masters and coverage plates. The two tiers live side by
+      side and are distinguished by the asset's plate_type, not by prefix.
+    retention: keep
+    public: false
+
+  prop_assets:
+    template: "projects/{project_id}/assets/props/{entity_id}/{asset_id}/v{version}/{filename}"
+    purpose: "Prop sheets and prop states, including vehicle interiors."
+    retention: keep
+    public: false
+
+  keyframes:
+    template: "projects/{project_id}/keyframes/{scene_id}/{shot_id}/{generation_id}/{filename}"
+    purpose: >
+      Per-shot keyframe candidates. Grouped by shot so a reviewer's
+      candidate set is one list operation. The approved one is recorded in
+      gate_decisions, not by moving the file.
+    retention: keep
+    public: false
+
+  video:
+    template: "projects/{project_id}/video/{scene_id}/{shot_id}/{generation_id}/{filename}"
+    purpose: "Stage 2. Declared now so the layout does not change when it lands."
+    retention: keep
+    public: false
+
+  thumbnails:
+    template: "thumbnails/{generation_id}/{size}.webp"
+    purpose: >
+      Derived and regenerable, so kept outside the project tree — it can be
+      purged wholesale and rebuilt. The justified grid reads these, not
+      the originals.
+    retention: regenerable
+    public: true
+
+  exports:
+    template: "projects/{project_id}/exports/{export_id}/{filename}"
+    purpose: "Generated deliverables handed back to the client."
+    retention: keep
+    public: false
+
+  tmp:
+    template: "tmp/{uuid}/{filename}"
+    purpose: >
+      Staging for in-flight uploads and provider fetches. Anything here is
+      unreferenced by the database and safe to expire.
+    retention: expire_7d
+    public: false
+
+# Lifecycle intent. R2 lifecycle rules are configured in the Cloudflare
+# dashboard; this records what they should be so drift is reviewable.
+lifecycle:
+  - prefix: "tmp/"
+    expire_days: 7
+    reason: "Staging only — never referenced by a database row."
+  - prefix: "thumbnails/"
+    expire_days: null
+    reason: "Regenerable, but cheap to keep. Purge manually if costs matter."
+
+# Provider outputs expire — Higgsfield states at least seven days. Anything the
+# platform intends to keep must be copied into R2 before that window closes.
+ingest_policy:
+  copy_provider_outputs: true
+  provider_retention_days: 7
+  note: >
+    A generation row stores both the provider URL and the R2 key. The provider
+    URL is for immediate display; the R2 key is the durable one.

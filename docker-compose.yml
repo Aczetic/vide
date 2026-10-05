@@ -1,0 +1,22 @@
+services:
+  db:
+    # pgvector ships on top of the official Postgres image; needed for entity-resolution
+    # embeddings and glossary search.
+    image: pgvector/pgvector:pg17
+    container_name: vide-db
+    environment:
+      POSTGRES_USER: vide
+      POSTGRES_PASSWORD: vide
+      POSTGRES_DB: vide
+    ports:
+      - "5433:5432"   # 5433 on the host, to stay clear of any local Postgres
+    volumes:
+      - vide-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vide -d vide"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  vide-db-data:

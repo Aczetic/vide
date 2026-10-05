@@ -1,0 +1,60 @@
+[project]
+name = "vide"
+version = "0.1.0"
+description = "Agentic AI film / micro-drama production platform — Stage 1 pre-production"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3.6",
+    "httpx>=0.28",
+    "anthropic>=0.69",
+    "boto3>=1.35",
+    "pyyaml>=6.0",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "python-multipart>=0.0.20",
+    # ingest
+    "python-docx>=1.1",
+    "pypdf>=5.1",
+    "openpyxl>=3.1",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Alembic writes these; they are not hand-maintained source.
+exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Depends() in an argument default is the documented FastAPI pattern, not a
+# mutable-default bug.
+"src/vide/api/*" = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
