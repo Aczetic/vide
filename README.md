@@ -1,244 +1,222 @@
+<div align="center">
+
 # vide
 
-**Production infrastructure for AI-generated film and episodic drama.**
+**Production infrastructure for AI generated film and episodic drama.**
 
-A screenplay goes in. What comes out is every character, set and prop the story
-needs — specified, generated, reviewed, and waiting for a human to approve —
-plus a shot list and a keyframe for every shot.
+A screenplay goes in. Out comes every character, set and prop the story needs,
+specified and generated and checked, with a shot list and a keyframe for each shot.
 
-Not a prompt tool. The hard parts of this work are continuity, scheduling and
-review, and that is what this is built around.
+</div>
 
----
+<br>
 
-## Why
+## The problem
 
-Everything before a frame is generated is still done by hand.
+Everything that happens before a frame is generated is still done by hand.
 
-Someone reads the script and lists the characters. Someone works out that the
-lead wears nine different outfits because the story spans nine days. Someone
-notices that a set appears only inside an action line and never in a heading, so
-nobody designed it. Someone writes the prompts, generates four options, judges
-them, regenerates.
+Someone reads the script and writes down the characters. Someone works out that the lead needs nine costumes because the story spans nine days. Someone notices a set that exists only inside an action line and never in a scene heading, so nobody designed it. Someone writes prompts, generates four options, judges them, writes new prompts.
 
-It takes people who know the craft vocabulary, and it does not scale. A handful
-of titles in flight is the ceiling — and the ceiling is human hours, not compute.
+This requires people who know the craft vocabulary. It does not scale. A handful of titles in flight is the ceiling, and the ceiling is human hours rather than compute.
 
-So the platform is built on one bet:
+So the platform rests on one idea:
 
-> **Expertise belongs in the tooling. Judgement stays with people.
-> Agents do the generation and the first-pass review.**
+> Expertise belongs in the tooling. Judgement belongs to people.
+> Agents handle generation and the first review pass.
 
-A reviewer should never need to know how to phrase a camera instruction. They
-should only need to know whether what came back looks right.
+A reviewer should never need to know how to phrase a camera instruction. They only need to know whether what came back looks right.
 
----
+<br>
 
-## The pipeline
+## How it flows
 
+```mermaid
+flowchart TD
+    A[Screenplay] --> B[Structure]
+    B --> C[Extraction]
+    C --> D[Entity resolution]
+    D --> E[Continuity matrix]
+    E --> F[Design order]
+
+    F --> G[Characters]
+    F --> H[Locations]
+    F --> I[Props]
+
+    G --> J[Agent review]
+    H --> J
+    I --> J
+
+    J --> K{{Human approval}}
+    K --> L[Shot cards]
+    L --> M[Keyframes]
+    M --> N{{Human approval}}
+
+    style K fill:#c9a227,stroke:#8a6f1b,color:#1a1a1a
+    style N fill:#c9a227,stroke:#8a6f1b,color:#1a1a1a
+    style A fill:#2a2a30,stroke:#4a4a55,color:#ededf0
+    style F fill:#2a2a30,stroke:#4a4a55,color:#ededf0
+    style M fill:#2a2a30,stroke:#4a4a55,color:#ededf0
 ```
-  script ──▶ structure ──▶ extraction ──▶ entities ──▶ continuity ──▶ design order
-                                                                           │
-                        ┌──────────────────────┬───────────────────────────┤
-                        ▼                      ▼                           ▼
-                   characters              locations                     props
-                        │                      │                           │
-                        └──────────┬───────────┴───────────────────────────┘
-                                   ▼
-                          agent review ──▶ ◆ human approval
-                                                   │
-                                                   ▼
-                                       shot cards ──▶ keyframes ──▶ ◆
-```
 
-`◆` is a gate. Gates are the only thing in the system allowed to block.
-Everything else runs concurrently.
+The gold boxes are gates. They are the only points in the system where anything waits. Everything else runs at once.
 
----
+<br>
 
-## What it does
+## Capabilities
 
-### Reads a script the way a production manager would
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Ingests `.docx`, `.pdf`, `.html`, `.xlsx`, `.md` and plain text, then splits it
-into episodes and scenes — handling the inconsistent formatting real scripts
-arrive with rather than demanding a clean one.
+### Reading
 
-**Structural parsing is deterministic, not generated.** Scene boundaries,
-headings, dialogue and delivery cues have exact answers, so they are parsed:
-free, instant, reproducible, and incapable of inventing a scene that is not
-there. Model judgement is spent only on the layer that actually needs it.
+Accepts `.docx`, `.pdf`, `.html`, `.xlsx`, `.md` and plain text, then splits into episodes and scenes while tolerating the formatting real scripts arrive with.
 
-Every extracted item keeps a span back to the line it came from, so a reviewer
-can always click through to the original text.
+Structure is parsed, never generated. Scene boundaries and dialogue have exact answers, so a parser handles them: free, instant, repeatable, and unable to invent a scene that was never written.
 
-### Works out what has to be built
+Every extracted item keeps a span back to its source line.
 
-Per scene, it extracts what a production has to make — who is present including
-people named only in action lines, locations the action implies that no heading
-names, props, vehicles, on-screen graphics, wardrobe, and the physical states
-that later scenes must match.
+</td>
+<td width="33%" valign="top">
 
-Then it resolves the mess. A script calls one person four things and one room
-three; clustering collapses those into single identities, assigns tiers from
-scene and line counts, and builds the location hierarchy.
+### Planning
 
-**What it cannot settle, it asks.** Where nothing in the text determines whether
-two names are one thing, that becomes an explicit question for a human rather
-than a silent merge. A wrong merge means building one set instead of two, and it
-is discovered on screen.
+Extracts what a production has to build. People named only in action lines. Sets the headings never mention. Props, vehicles, on screen graphics, wardrobe, and the physical states later scenes must match.
 
-Story-days are computed deterministically — the same script always yields the
-same answer. That number multiplies into the costume count, so it is not allowed
-to drift between runs.
+Clusters the mess into canonical entities. One script calls a person four things and a room three.
 
-The output is a **design order**: every character state, every set at every time
-of day, every prop, ranked so that whatever is reused most is built first.
+Computes story days deterministically, since that number multiplies into the costume count and cannot drift between runs.
 
-### Generates the assets
+</td>
+<td width="33%" valign="top">
 
-Character sheets, location plates and prop sheets — several candidates each,
-generated in parallel.
+### Building
 
-Specifications are written once per entity and then pasted **verbatim** into
-every prompt that uses them. That repetition is not redundancy; it is what keeps
-a character the same person across hundreds of shots.
+Character sheets, location plates and prop sheets, several candidates each, generated concurrently.
 
-Prompts are written by agents that load versioned skill documents, then checked
-against assertions before anything is sent. A skill instructs, and a model may
-ignore an instruction — the assertions are enforced. A prompt that breaks one is
-repaired surgically, and rejected only if repair fails, because spending four
-generations to rediscover a known failure is waste.
+Specifications are written once per entity then pasted verbatim into every prompt that uses them. That repetition is what holds a face steady across hundreds of shots.
 
-Locations build in tiers: a master establishes the space before any derived
-view, so every later view inherits one room instead of inventing its own.
+Locations build in tiers. A master establishes the space before any view derived from it.
 
-### Checks the work before a person sees it
+</td>
+</tr>
+</table>
 
-A vision agent reviews every image against its specification and returns a
-verdict, a reason in plain language, and a **failure category**.
+<br>
 
-The category is the point. "It looks wrong" sends someone guessing. A category
-says what to change — patch one prompt section, simplify the shot, or rebuild
-the underlying asset.
+### What it refuses to guess
 
-Rejections are never deleted. They stay visible, a human can override, and those
-overrides are the signal used to tune the reviewer.
+Where nothing in the text settles whether two names mean one thing, the platform raises a question instead of merging quietly. A wrong merge means building one set where two were needed, and that surfaces on screen rather than in a review.
 
-### Plans the shots
+### Checking before a person looks
 
-Each scene splits into shots, each with a structured card covering material,
-direction, camera and edit. The scene's geography is fixed **once** and inherited
-by every shot in it — which is what stops a room rearranging itself between cuts.
+A vision agent reviews every image against its specification and returns three things: a verdict, a reason written in plain language, and a failure category.
 
-Keyframes are composed from *approved* assets, not merely generated ones. A
-still built on something nobody signed off has to be rebuilt the moment that
-thing changes.
+The category carries the weight. "It looks wrong" sends someone guessing. A category states what to change, whether that is one section of a prompt, a simpler shot, or a rebuilt asset underneath.
 
-### Puts people only where they are needed
+Rejections are never discarded. They stay visible, a human can override any of them, and those overrides become the signal used to tune the reviewer.
 
-A cross-project review queue shows everything waiting on a decision, so
-reviewers clear work rather than hunt for it. One click decides; keyboard
-shortcuts move through candidates. Selecting writes a gate decision, which is
-what releases the work downstream.
+### Shot planning
 
-### Measures itself
+Scenes split into shots, each carrying a structured card for material, direction, camera and edit. Scene geography is fixed once and inherited by every shot within it, which is what stops a room rearranging itself between cuts.
 
-Every model call is recorded with its prompt and structured sections, the skill
-versions that produced it, its references, outputs, cost and latency — enough to
-replay any generation exactly.
+Keyframes compose from approved assets rather than merely generated ones. A still built on something nobody signed off has to be rebuilt the moment that thing changes.
 
-That log is the measurement: first-pass approval rate, attempts to approval,
-cost per approved element, and which failure categories dominate. Because skill
-versions are recorded per call, two versions can be compared on the same work
-instead of argued about.
+### Measuring itself
 
-Where a number cannot be computed, it is reported as missing rather than as
-zero.
+Every model call lands in a log with its prompt, the skill versions behind it, references, outputs, cost and latency. Enough to replay any generation exactly.
 
----
+That log answers the questions that matter: first pass approval rate, attempts before approval, cost per approved element, which failure categories dominate. Skill versions sit on every row, so two versions of a skill can be compared against the same work rather than argued about.
+
+Numbers that cannot be computed are reported as missing. Never as zero.
+
+<br>
 
 ## Principles
 
 | | |
-|---|---|
-| **Gates are the only blocking points** | Nothing waits except on a person. |
-| **Per-element flow** | Pipelines are graphs of elements, not global phases. One character clearing its gate moves on alone. |
-| **Assets before shots** | Nothing downstream is attempted until what it depends on is approved. |
-| **Versions are immutable** | A variant never overwrites its parent. Changing something upstream marks dependents stale — flagged for a human, never silently regenerated. |
-| **Change one thing at a time** | A regeneration patches the failing section and leaves the rest byte-identical. A rewritten prompt loses whatever already worked. |
-| **Model-agnostic core** | Providers and models are configuration. Model-specific knowledge lives in adapters and skill documents, never in the pipeline. |
-| **Skills are data** | Agents request a skill by name; the registry returns the active version. Swapping one is configuration. Projects pin versions, which is how comparisons run. |
+|:--|:--|
+| **Gates block, nothing else does** | Work waits on people and on nothing else. |
+| **Elements flow independently** | Pipelines are graphs, not phases. One character clearing its gate moves on alone. |
+| **Assets precede shots** | Nothing downstream begins until what it depends on carries an approval. |
+| **Versions never overwrite** | A variant leaves its parent intact. Changing something upstream marks dependents stale, flagged for a person, never regenerated silently. |
+| **One change per attempt** | A regeneration patches the failing section and leaves everything else byte identical. Rewriting a whole prompt loses whatever already worked. |
+| **The core knows no models** | Providers and models are configuration. Model specific knowledge lives in adapters and skill documents. |
+| **Skills are data** | Agents request a skill by name and the registry returns the active version. Swapping one is configuration. Projects pin versions, which is how comparisons run. |
 
----
+<br>
 
-## Architecture
+## Built with
+
+<div align="center">
+
+| Backend | Frontend | Infrastructure |
+|:--|:--|:--|
+| Python 3.11 | Next.js | PostgreSQL + pgvector |
+| FastAPI | React | Docker |
+| SQLAlchemy | TypeScript | S3 compatible storage |
+| Alembic | Tailwind | |
+
+</div>
 
 ```
-Python · FastAPI · SQLAlchemy · PostgreSQL + pgvector · Alembic
-Next.js · React · TypeScript · Tailwind
-S3-compatible object storage · Docker
+src/vide
+├── models        projects, scripts, entities, assets, generations, reviews, gates
+├── providers     two protocols: fast synchronous text, slow asynchronous media.
+│                 Tier configuration maps task to model, so cost scales with the
+│                 project rather than with the code
+├── registry      versioned skill registry with per project pinning
+├── jobs          Postgres backed queue. Horizontal workers, retry with backoff,
+│                 reclaimable leases, fan out per element
+├── pipeline      ingest, extraction, resolution, continuity, design order,
+│                 specifications, prompts, generation, review, shots, keyframes
+├── storage       declared object storage layout with drift reconciliation
+└── api           HTTP surface
+
+web               review interface
 ```
 
-```
-src/vide/
-  models/      data model — projects, scripts, entities, assets,
-               generations, reviews, gate decisions
-  providers/   adapters behind two protocols: fast synchronous text, and slow
-               asynchronous media. Tier config maps task to model, so cost
-               scales with the project rather than the code
-  registry/    versioned skill registry with per-project pinning
-  jobs/        Postgres-backed queue — horizontal workers, retry with backoff,
-               reclaimable leases, fan-out per element
-  pipeline/    ingest, extraction, entity resolution, continuity, design order,
-               specs, prompts, generation, review, shot planning, keyframes
-  storage/     declared object-storage layout with drift reconciliation
-  api/         HTTP API
-web/           review interface
-```
+The interface is a dense asset grid with a detail overlay, built for someone judging a few hundred images an hour rather than browsing a gallery. Status reads as a hairline along the tile edge instead of a badge, because badges cost the density that makes the view workable at all.
 
-**The interface** is a dense asset grid with a detail overlay, built for someone
-reviewing a few hundred images an hour rather than browsing a gallery. Status
-reads as a hairline on the tile instead of a badge — badges cost the density
-that makes the view usable at all.
-
----
+<br>
 
 ## Running it
 
-Requires Docker and Python 3.11+.
+Requires Docker and Python 3.11 or newer.
 
 ```bash
-docker compose up -d                       # Postgres + pgvector
+docker compose up -d
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-cp .env.example .env                       # add provider credentials
+cp .env.example .env
 .venv/bin/alembic upgrade head
-.venv/bin/python -m vide.doctor            # checks every dependency; no side effects
 ```
+
+Confirm every dependency is reachable. This writes nothing and submits no generations.
+
+```bash
+.venv/bin/python -m vide.doctor
+```
+
+Then bring up the API and the interface.
 
 ```bash
 .venv/bin/uvicorn vide.api:app --port 8000
 cd web && npm install && npm run dev
 ```
 
-### Skill documents
+<br>
 
-Agents load versioned instruction documents from `skills/` at runtime and
-resolve them by name through the registry.
+## Skill documents
 
-**Those documents are not in this repository.** They encode production craft and
-are maintained privately. Everything around them — the registry, versioning,
-per-project pinning, comparison — is here. Supply your own; see
-[`skills/README.md`](skills/README.md) for the format.
+Agents load versioned instruction documents at runtime and resolve them by name through the registry.
 
----
+**Those documents live outside this repository.** They hold production craft and stay private. Everything around them is here: the registry, the versioning, per project pinning, comparison between versions. Supply your own and see [`skills/README.md`](skills/README.md) for the format.
+
+<br>
 
 ## Status
 
-Under active development, running against real productions.
+Active development, running against real productions.
 
-Pre-production is built: script through to approved assets, shot cards and
-keyframes. Video generation is next, and the architecture already accommodates
-it — the data model, the generation log and the skill registry need no redesign
-to support it.
+Preproduction works end to end: a script through to approved assets, shot cards and keyframes. Video generation comes next, and the architecture already accommodates it. The data model, the generation log and the skill registry need no redesign to carry it.
